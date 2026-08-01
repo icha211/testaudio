@@ -84,7 +84,9 @@ Then do manual upload in Cloudflare console:
 
 Optional:
 
-- You can set `Upload Pipeline Endpoint` and use `Upload via Pipeline` per part. The endpoint should return JSON containing a public URL field (`audio_cloudflare`, `publicUrl`, or `url`).
+- You can set `Upload Pipeline Endpoint` and use `Upload via Pipeline` per part.
+- For true folder placement, the gateway must honor `objectKey` exactly as `audio/listening/sets/{setId}/part_{n}.mp3`.
+- The upload response should return JSON containing at least `uploadUrl` and `objectUrl`.
 
 ## Public runtime config
 

@@ -6,6 +6,7 @@ const PUBLIC_R2_DEV_BASE = APP_CONFIG.cloudflarePublicBase || "https://pub-1975c
 const API_GATEWAY_BASE = (APP_CONFIG.apiGatewayBase || "").trim().replace(/\/+$/, "");
 const DEFAULT_UPLOAD_ENDPOINT = APP_CONFIG.uploadEndpoint || (API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-proxy` : "");
 const ENSURE_FOLDER_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/ensure-audio-folder` : "";
+const UPLOAD_URL_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-url` : "";
 const PART_KEYS = ["1", "2", "3"];
 
 const audioUrlsByPart = {
@@ -461,50 +462,69 @@ function requireSetIdAndFolder() {
 
 async function uploadPartViaPipeline(partKey) {
   const setId = requireSetIdAndFolder();
-  const uploadEndpoint = refs.uploadEndpoint.value.trim();
+  const uploadUrlEndpoint = refs.uploadEndpoint.value.trim() || UPLOAD_URL_ENDPOINT;
   const card = getPartCard(partKey);
   const fileInput = card?.querySelector(`[data-file-part=\"${partKey}\"]`);
   const file = fileInput?.files?.[0];
-
+  if (!uploadUrlEndpoint) {
   if (!file) {
     setPartStatus(partKey, "Choose an audio file first.", "warn");
     return;
   }
 
-  if (!uploadEndpoint) {
-    setPartStatus(partKey, "Upload endpoint not set. Use manual Cloudflare upload + Validate.", "warn");
+  if (!UPLOAD_URL_ENDPOINT) {
+    setPartStatus(partKey, "Upload URL endpoint not configured. The gateway must support signed uploads.", "warn");
     return;
   }
 
   await saveFolderRecordToFirebase();
 
-  setPartStatus(partKey, "Uploading through pipeline...", "ok");
-
-  const formData = new FormData();
   const objectKey = `audio/listening/sets/${setId}/part_${partKey}.mp3`;
+  setPartStatus(partKey, "Requesting signed upload URL for exact folder path...", "ok");
 
-  formData.append("file", file, `part_${partKey}.mp3`);
-  formData.append("fileName", objectKey);
-  formData.append("fileType", file.type || "audio/mpeg");
-
-  const response = await fetch(uploadEndpoint, {
+  const signedResponse = await fetch(uploadUrlEndpoint, {
     method: "POST",
-    body: formData
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      objectKey,
+      fileName: objectKey,
+      fileType: file.type || "audio/mpeg"
+    })
   });
 
-  if (!response.ok) {
-    throw new Error(`Upload failed (${response.status})`);
+  if (!signedResponse.ok) {
+    throw new Error(`Signed URL request failed (${signedResponse.status})`);
   }
 
-  const result = await response.json();
+  const result = await signedResponse.json();
+  const uploadUrl = result.uploadUrl || "";
   const publicUrl = result.objectUrl || result.audio_cloudflare || result.publicUrl || result.url || "";
-  if (!publicUrl) {
+  if (!uploadUrl) {
+    throw new Error("Signed URL response did not include uploadUrl.");
+  }
+
+  setPartStatus(partKey, "Uploading MP3 into the folder path...", "ok");
+
+  const putResponse = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "audio/mpeg"
+    },
+    body: file
+  });
+
+  if (!putResponse.ok) {
+    throw new Error(`R2 upload failed (${putResponse.status})`);
+  }
+
+  const finalPublicUrl = publicUrl || result.objectUrl || `https://${PUBLIC_R2_DEV_BASE.replace(/^https?:\/\//, "")}/${objectKey}`;
+  if (!finalPublicUrl) {
     throw new Error("Upload succeeded but no public URL was returned.");
   }
 
-  setPartAudioUrl(partKey, publicUrl);
-  await saveSinglePartAudioUrlToFirebase(partKey, publicUrl);
-  setPartStatus(partKey, "Upload completed and URL mapped to this part.", "ok");
+  setPartAudioUrl(partKey, finalPublicUrl);
+  await saveSinglePartAudioUrlToFirebase(partKey, finalPublicUrl);
+  setPartStatus(partKey, "Upload completed into the folder path and URL mapped to this part.", "ok");
 }
 
 function getSelectedAudioFileCount() {

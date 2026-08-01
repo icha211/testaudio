@@ -320,6 +320,7 @@ async function saveValidatedPartUrlsToFirebase() {
   ensureIdsAndFolder();
 
   const setId = refs.setId.value.trim();
+  const setDate = refs.setDate.value || todayString();
   const nowIso = new Date().toISOString();
   const patchPayload = {
     _updatedAt: nowIso,
@@ -335,6 +336,28 @@ async function saveValidatedPartUrlsToFirebase() {
   }
 
   await rtdbPatch(`${DRAFTS_PATH}/${setId}`, patchPayload);
+  await rtdbPut(`${DATE_INDEX_PATH}/${setDate}`, setId);
+}
+
+async function saveSinglePartAudioUrlToFirebase(partKey, audioUrl) {
+  ensureIdsAndFolder();
+
+  const setId = refs.setId.value.trim();
+  const setDate = refs.setDate.value || todayString();
+  const nowIso = new Date().toISOString();
+  const patchPayload = {
+    _updatedAt: nowIso,
+    updatedAt: nowIso,
+    cloudflare_folder: getCloudflareFolder(),
+    parts: {
+      [partKey]: {
+        audio_cloudflare: audioUrl
+      }
+    }
+  };
+
+  await rtdbPatch(`${DRAFTS_PATH}/${setId}`, patchPayload);
+  await rtdbPut(`${DATE_INDEX_PATH}/${setDate}`, setId);
 }
 
 async function checkAudioUrlExists(url) {
@@ -453,6 +476,8 @@ async function uploadPartViaPipeline(partKey) {
     return;
   }
 
+  await saveFolderRecordToFirebase();
+
   setPartStatus(partKey, "Uploading through pipeline...", "ok");
 
   const formData = new FormData();
@@ -478,6 +503,7 @@ async function uploadPartViaPipeline(partKey) {
   }
 
   setPartAudioUrl(partKey, publicUrl);
+  await saveSinglePartAudioUrlToFirebase(partKey, publicUrl);
   setPartStatus(partKey, "Upload completed and URL mapped to this part.", "ok");
 }
 

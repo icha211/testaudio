@@ -224,7 +224,16 @@ async function resolveSetId() {
   }
 
   const indexed = await rtdbGet(`${DATE_INDEX_PATH}/${date}`);
-  return typeof indexed === "string" ? indexed : "";
+  if (typeof indexed === "string" && indexed.trim()) {
+    return indexed.trim();
+  }
+
+  if (indexed && typeof indexed === "object") {
+    const setId = indexed.setId || indexed.id || indexed.value || "";
+    return typeof setId === "string" ? setId.trim() : "";
+  }
+
+  return "";
 }
 
 async function connect() {
@@ -239,6 +248,7 @@ async function connect() {
 
     refs.setId.value = setId;
     localStorage.setItem("toefl_listening_last_set_id", setId);
+    refs.testMeta.textContent = `Resolved setId from Firebase/date lookup: ${setId}`;
 
     const initial = await rtdbGet(`${DRAFTS_PATH}/${setId}`);
     renderDraft(initial);

@@ -385,6 +385,17 @@ async function runOneClickPipeline() {
   setStatus("Generated set ID. Saving folder metadata to Firebase...", "ok");
   await saveFolderRecordToFirebase();
 
+  setStatus("Folder metadata saved. Uploading selected files (if configured)...", "ok");
+  const uploadResult = await uploadSelectedPartFilesIfConfigured();
+
+  if (uploadResult.reason === "no-files-selected") {
+    setStatus("No audio files selected. No objects were uploaded to Cloudflare.", "warn");
+  }
+
+  if (uploadResult.reason === "no-upload-endpoint") {
+    setStatus("Upload endpoint is empty. No objects were uploaded to Cloudflare.", "warn");
+  }
+
   setStatus("Folder metadata saved. Validating all parts...", "ok");
   await validateAllParts();
 }
@@ -446,6 +457,47 @@ async function uploadPartViaPipeline(partKey) {
 
   setPartAudioUrl(partKey, publicUrl);
   setPartStatus(partKey, "Upload completed and URL mapped to this part.", "ok");
+}
+
+function getSelectedAudioFileCount() {
+  let count = 0;
+  for (const partKey of PART_KEYS) {
+    const card = getPartCard(partKey);
+    const fileInput = card?.querySelector(`[data-file-part="${partKey}"]`);
+    if (fileInput?.files?.[0]) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+async function uploadSelectedPartFilesIfConfigured() {
+  const uploadEndpoint = refs.uploadEndpoint.value.trim();
+  const selectedCount = getSelectedAudioFileCount();
+
+  if (!selectedCount) {
+    return { uploadedCount: 0, reason: "no-files-selected" };
+  }
+
+  if (!uploadEndpoint) {
+    return { uploadedCount: 0, reason: "no-upload-endpoint" };
+  }
+
+  let uploadedCount = 0;
+  for (const partKey of PART_KEYS) {
+    const card = getPartCard(partKey);
+    const fileInput = card?.querySelector(`[data-file-part="${partKey}"]`);
+    if (!fileInput?.files?.[0]) {
+      continue;
+    }
+
+    // Sequential upload keeps statuses readable.
+    // eslint-disable-next-line no-await-in-loop
+    await uploadPartViaPipeline(partKey);
+    uploadedCount += 1;
+  }
+
+  return { uploadedCount, reason: "uploaded" };
 }
 
 function buildDraftPayload() {

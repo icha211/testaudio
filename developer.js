@@ -4,7 +4,7 @@ const DRAFTS_PATH = "/toefl_itp/drafts_v2";
 const DATE_INDEX_PATH = "/toefl_itp/index_by_date/listening";
 const PUBLIC_R2_DEV_BASE = APP_CONFIG.cloudflarePublicBase || "https://pub-1975cb14188340238a5d6d34750e4880.r2.dev";
 const API_GATEWAY_BASE = (APP_CONFIG.apiGatewayBase || "").trim().replace(/\/+$/, "");
-const DEFAULT_UPLOAD_ENDPOINT = APP_CONFIG.uploadEndpoint || (API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-proxy` : "");
+const DEFAULT_UPLOAD_ENDPOINT = APP_CONFIG.uploadEndpoint || (API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-url` : "");
 const ENSURE_FOLDER_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/ensure-audio-folder` : "";
 const UPLOAD_URL_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-url` : "";
 const PART_KEYS = ["1", "2", "3"];
@@ -53,6 +53,20 @@ function apiUrl(path) {
 
 function normalizeFolderUrl(url) {
   return (url || "").trim().replace(/\/+$/, "");
+}
+
+function normalizeUploadEndpoint(url) {
+  const clean = (url || "").trim();
+  if (!clean) {
+    return "";
+  }
+
+  // Legacy configs may still point to upload-proxy. The current flow needs upload-url.
+  if (clean.includes("/api/developer/upload-proxy")) {
+    return clean.replace("/api/developer/upload-proxy", "/api/developer/upload-url");
+  }
+
+  return clean;
 }
 
 function buildDefaultCloudflareFolder(setId) {
@@ -679,11 +693,12 @@ function buildCloudflareFolderFromSetId() {
 
 function initDefaultValues() {
   const lastSetId = localStorage.getItem("toefl_listening_last_set_id") || "";
-  const savedUploadEndpoint = localStorage.getItem("toefl_listening_upload_endpoint") || "";
+  const savedUploadEndpoint = normalizeUploadEndpoint(localStorage.getItem("toefl_listening_upload_endpoint") || "");
   refs.setDate.value = todayString();
   refs.setId.value = lastSetId;
 
-  refs.uploadEndpoint.value = savedUploadEndpoint || DEFAULT_UPLOAD_ENDPOINT;
+  refs.uploadEndpoint.value = normalizeUploadEndpoint(savedUploadEndpoint || DEFAULT_UPLOAD_ENDPOINT);
+  localStorage.setItem("toefl_listening_upload_endpoint", refs.uploadEndpoint.value);
 
   if (lastSetId) {
     refs.cloudflareFolder.value = buildDefaultCloudflareFolder(lastSetId);
@@ -778,7 +793,9 @@ function bindEvents() {
 
   refs.cloudflareFolder.addEventListener("input", updateAllExpectedUrlHints);
   refs.uploadEndpoint.addEventListener("change", () => {
-    localStorage.setItem("toefl_listening_upload_endpoint", refs.uploadEndpoint.value.trim());
+    const normalized = normalizeUploadEndpoint(refs.uploadEndpoint.value);
+    refs.uploadEndpoint.value = normalized;
+    localStorage.setItem("toefl_listening_upload_endpoint", normalized);
   });
 
   refs.partsContainer.addEventListener("click", async (event) => {

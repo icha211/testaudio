@@ -96,3 +96,32 @@ Do not place private R2 credentials in client-side files.
 
 - Real-time updates use Firebase RTDB streaming (SSE) via REST endpoint.
 - If your RTDB rules require auth, add auth handling/token support before production use.
+
+## Troubleshooting: Cloudflare audio validation and CORS
+
+If you open `developer.html` directly as `file://...`, browser origin becomes `null` and `fetch` validation can be blocked by CORS.
+
+Recommended:
+
+1. Run via HTTP locally (example: VS Code Live Server or `python -m http.server`).
+2. Configure Cloudflare R2 CORS for your public bucket/domain.
+
+Example R2 CORS rule:
+
+```json
+[
+	{
+		"AllowedOrigins": [
+			"https://icha211.github.io",
+			"http://localhost:3000",
+			"http://localhost:8000"
+		],
+		"AllowedMethods": ["GET", "HEAD"],
+		"AllowedHeaders": ["*"],
+		"ExposeHeaders": ["Content-Length", "Content-Type", "ETag"],
+		"MaxAgeSeconds": 3600
+	}
+]
+```
+
+Important: the app does not physically "create" folders in R2. Folder paths are virtual and effectively exist once objects (like `part_1.mp3`) are uploaded at that key path.

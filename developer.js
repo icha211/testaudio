@@ -304,6 +304,10 @@ async function saveValidatedPartUrlsToFirebase() {
 }
 
 async function checkAudioUrlExists(url) {
+  if (window.location.protocol === "file:") {
+    return null;
+  }
+
   try {
     const headResponse = await fetch(url, { method: "HEAD" });
     if (headResponse.ok) {
@@ -335,6 +339,12 @@ async function validatePartAudio(partKey) {
   setPartStatus(partKey, "Validating public URL...", "ok");
 
   const exists = await checkAudioUrlExists(url);
+  if (exists === null) {
+    setPartAudioUrl(partKey, url);
+    setPartStatus(partKey, "Running on file://, so CORS blocks fetch validation. URL was mapped; test from http/https.", "warn");
+    return true;
+  }
+
   if (!exists) {
     setPartStatus(partKey, "Not found or not publicly accessible.", "warn");
     return false;

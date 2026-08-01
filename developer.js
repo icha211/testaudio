@@ -466,14 +466,14 @@ async function uploadPartViaPipeline(partKey) {
   const card = getPartCard(partKey);
   const fileInput = card?.querySelector(`[data-file-part=\"${partKey}\"]`);
   const file = fileInput?.files?.[0];
+
   if (!uploadUrlEndpoint) {
-  if (!file) {
-    setPartStatus(partKey, "Choose an audio file first.", "warn");
+    setPartStatus(partKey, "Upload URL endpoint not configured. The gateway must support signed uploads.", "warn");
     return;
   }
 
-  if (!UPLOAD_URL_ENDPOINT) {
-    setPartStatus(partKey, "Upload URL endpoint not configured. The gateway must support signed uploads.", "warn");
+  if (!file) {
+    setPartStatus(partKey, "Choose an audio file first.", "warn");
     return;
   }
 

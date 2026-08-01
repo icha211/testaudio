@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TOEFL Listening Test View</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <header class="page-header card">
+      <div>
+        <p class="eyebrow">Test View</p>
+        <h1>Live TOEFL Listening Set</h1>
+        <p class="muted">This page auto-syncs in real time whenever the developer saves changes.</p>
+      </div>
+      <div class="actions">
+        <a class="btn alt" href="index.html">Home</a>
+        <a class="btn btn-secondary" href="developer.html" target="_blank" rel="noopener">Open Developer Page</a>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>Connect to Set</h2>
+      <div class="form-grid">
+        <div>
+          <label for="setDate">Set Date</label>
+          <input id="setDate" type="date" />
+        </div>
+        <div>
+          <label for="setId">Set ID</label>
+          <input id="setId" placeholder="mocktest_listening_YYYY-MM-DD_..." />
+        </div>
+        <div>
+          <label for="liveMode">Realtime Stream</label>
+          <input id="liveMode" value="Enabled" disabled />
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="btnConnect" type="button">Connect</button>
+        </div>
+      </div>
+      <p id="streamStatus" class="status"></p>
+    </section>
+
+    <section class="card" id="testContainer">
+      <div class="part-header">
+        <h2 id="testTitle">No test loaded</h2>
+        <span class="live-pill"><span class="live-dot"></span>Live</span>
+      </div>
+      <p class="muted" id="testMeta">Choose a set ID or set date, then press Connect.</p>
+      <div id="partsView"></div>
+    </section>
+  </main>
+
+  <script src="app-config.js"></script>
+  <script src="test.js"></script>
+</body>
+</html>

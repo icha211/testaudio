@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TOEFL Listening Developer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <header class="page-header card">
+      <div>
+        <p class="eyebrow">Developer Console</p>
+        <h1>Listening Draft Builder</h1>
+        <p class="muted">Input audio URLs, questions, transcripts, answer keys, and explanations. Save to Firebase RTDB.</p>
+      </div>
+      <div class="actions">
+        <a class="btn alt" href="index.html">Home</a>
+        <a class="btn btn-secondary" id="openTestLink" href="test.html" target="_blank" rel="noopener">Open Test Page</a>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Set Metadata</h2>
+        <div class="form-grid" id="metaForm">
+          <div>
+            <label for="setDate">Set Date</label>
+            <input id="setDate" type="date" />
+          </div>
+          <div>
+            <label for="setId">Set ID</label>
+            <input id="setId" placeholder="mocktest_listening_YYYY-MM-DD_..." />
+          </div>
+          <div>
+            <label for="difficulty">Difficulty</label>
+            <select id="difficulty">
+              <option>easy</option>
+              <option selected>intermediate</option>
+              <option>hard</option>
+            </select>
+          </div>
+          <div>
+            <label for="testType">Test Type</label>
+            <input id="testType" value="mocktest" />
+          </div>
+          <div>
+            <label for="module">Module</label>
+            <input id="module" value="listening" />
+          </div>
+          <div>
+            <label for="label">Label</label>
+            <input id="label" value="Listening" />
+          </div>
+          <div class="full">
+            <label for="cloudflareFolder">Cloudflare Folder URL</label>
+            <input id="cloudflareFolder" placeholder="https://pub-...r2.dev/audio/listening/sets/mocktest_listening_..." />
+          </div>
+          <div class="full">
+            <label for="uploadEndpoint">Upload Pipeline Endpoint (optional)</label>
+            <input id="uploadEndpoint" placeholder="https://your-api/upload (returns public Cloudflare URL)" />
+          </div>
+        </div>
+
+        <div class="actions" style="margin-top: 0.8rem;">
+          <button id="btnGenerateId" type="button">Generate Set ID</button>
+          <button id="btnOneClickPipeline" type="button">One-Click Pipeline</button>
+          <button class="alt" id="btnBuildFolder" type="button">Build Cloudflare Folder</button>
+          <button class="alt" id="btnCreateFolderDraft" type="button">Create Folder URL in Firebase</button>
+          <button class="alt" id="btnLoadById" type="button">Load by Set ID</button>
+          <button class="alt" id="btnLoadByDate" type="button">Load Latest by Date</button>
+          <button class="alt" id="btnValidateAll" type="button">Validate part_1 / part_2 / part_3</button>
+          <button id="btnSave" type="button">Save / Publish</button>
+        </div>
+        <div id="devStatus" class="status"></div>
+      </article>
+
+      <article class="card">
+        <h2>Parts</h2>
+        <p class="muted">Fill each listening part below. Empty fields are saved as empty strings.</p>
+        <div id="partsContainer"></div>
+      </article>
+    </section>
+  </main>
+
+  <script src="app-config.js"></script>
+  <script src="developer.js"></script>
+</body>
+</html>

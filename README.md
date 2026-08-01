@@ -102,6 +102,7 @@ Do not place private R2 credentials in client-side files.
 
 - Real-time updates use Firebase RTDB streaming (SSE) via REST endpoint.
 - If your RTDB rules require auth, add auth handling/token support before production use.
+- Backend upload contract: [GATEWAY_AUDIO_UPLOAD_CONTRACT.md](GATEWAY_AUDIO_UPLOAD_CONTRACT.md)
 
 ## Troubleshooting: Cloudflare audio validation and CORS
 

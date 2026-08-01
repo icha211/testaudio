@@ -1,0 +1,38 @@
+substitutions:
+  _REGION: asia-southeast1
+  _AR_REPO: ielts-api-gateway
+  _IMAGE_NAME: ielts-api-gateway
+
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        if ! gcloud artifacts repositories describe "${_AR_REPO}" --location "${_REGION}" --project "$PROJECT_ID" >/dev/null 2>&1; then
+          gcloud artifacts repositories create "${_AR_REPO}" \
+            --repository-format=docker \
+            --location "${_REGION}" \
+            --description="IELTS API Gateway Docker images" \
+            --project "$PROJECT_ID"
+        fi
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      [
+        "build",
+        "-t",
+        "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest",
+        "."
+      ]
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      [
+        "push",
+        "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest"
+      ]
+
+images:
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest"

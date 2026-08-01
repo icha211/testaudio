@@ -3,7 +3,9 @@ const RTDB_BASE = APP_CONFIG.rtdbBaseUrl || "https://quickcheck-25590-default-rt
 const DRAFTS_PATH = "/toefl_itp/drafts_v2";
 const DATE_INDEX_PATH = "/toefl_itp/index_by_date/listening";
 const PUBLIC_R2_DEV_BASE = APP_CONFIG.cloudflarePublicBase || "https://pub-1975cb14188340238a5d6d34750e4880.r2.dev";
-const DEFAULT_UPLOAD_ENDPOINT = APP_CONFIG.uploadEndpoint || "";
+const API_GATEWAY_BASE = (APP_CONFIG.apiGatewayBase || "").trim().replace(/\/+$/, "");
+const DEFAULT_UPLOAD_ENDPOINT = APP_CONFIG.uploadEndpoint || (API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-proxy` : "");
+const ENSURE_FOLDER_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/ensure-audio-folder` : "";
 const PART_KEYS = ["1", "2", "3"];
 
 const audioUrlsByPart = {
@@ -107,6 +109,20 @@ async function rtdbPatch(path, body) {
   if (!response.ok) {
     throw new Error(`PATCH failed (${response.status})`);
   }
+  return response.json();
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error(`POST failed (${response.status})`);
+  }
+
   return response.json();
 }
 
@@ -274,6 +290,24 @@ async function saveFolderRecordToFirebase() {
 
   const setId = refs.setId.value.trim();
   const setDate = refs.setDate.value;
+
+  // If gateway is configured, ask backend to materialize folder marker in R2.
+  if (ENSURE_FOLDER_ENDPOINT) {
+    try {
+      const ensureResult = await postJson(ENSURE_FOLDER_ENDPOINT, {
+        setId,
+        testType: refs.testType.value.trim() || "mocktest"
+      });
+
+      if (ensureResult?.folderUrl) {
+        refs.cloudflareFolder.value = normalizeFolderUrl(ensureResult.folderUrl);
+        updateAllExpectedUrlHints();
+      }
+    } catch (error) {
+      setStatus(`Gateway folder ensure failed: ${error.message}. Using local folder URL pattern.`, "warn");
+    }
+  }
+
   const payload = buildFolderRecordPayload(setId);
 
   await rtdbPatch(`${DRAFTS_PATH}/${setId}`, payload);
@@ -385,19 +419,7 @@ async function runOneClickPipeline() {
   setStatus("Generated set ID. Saving folder metadata to Firebase...", "ok");
   await saveFolderRecordToFirebase();
 
-  setStatus("Folder metadata saved. Uploading selected files (if configured)...", "ok");
-  const uploadResult = await uploadSelectedPartFilesIfConfigured();
-
-  if (uploadResult.reason === "no-files-selected") {
-    setStatus("No audio files selected. No objects were uploaded to Cloudflare.", "warn");
-  }
-
-  if (uploadResult.reason === "no-upload-endpoint") {
-    setStatus("Upload endpoint is empty. No objects were uploaded to Cloudflare.", "warn");
-  }
-
-  setStatus("Folder metadata saved. Validating all parts...", "ok");
-  await validateAllParts();
+  setStatus("Folder path saved. Next: upload part_1.mp3, part_2.mp3, part_3.mp3 in Cloudflare console, then click Validate.", "ok");
 }
 
 function requireSetIdAndFolder() {
@@ -434,11 +456,11 @@ async function uploadPartViaPipeline(partKey) {
   setPartStatus(partKey, "Uploading through pipeline...", "ok");
 
   const formData = new FormData();
-  formData.append("file", file);
-  formData.append("setId", setId);
-  formData.append("part", String(partKey));
-  formData.append("module", "listening");
-  formData.append("targetFilename", `part_${partKey}.mp3`);
+  const objectKey = `audio/listening/sets/${setId}/part_${partKey}.mp3`;
+
+  formData.append("file", file, `part_${partKey}.mp3`);
+  formData.append("fileName", objectKey);
+  formData.append("fileType", file.type || "audio/mpeg");
 
   const response = await fetch(uploadEndpoint, {
     method: "POST",
@@ -450,7 +472,7 @@ async function uploadPartViaPipeline(partKey) {
   }
 
   const result = await response.json();
-  const publicUrl = result.audio_cloudflare || result.publicUrl || result.url || "";
+  const publicUrl = result.objectUrl || result.audio_cloudflare || result.publicUrl || result.url || "";
   if (!publicUrl) {
     throw new Error("Upload succeeded but no public URL was returned.");
   }
@@ -645,7 +667,7 @@ function bindEvents() {
     try {
       await runOneClickPipeline();
     } catch (error) {
-      setStatus(`One-click pipeline failed: ${error.message}`, "warn");
+      setStatus(`Create folder flow failed: ${error.message}`, "warn");
     }
   });
 

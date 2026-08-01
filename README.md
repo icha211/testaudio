@@ -68,15 +68,19 @@ This project now supports your folder-based process:
 	- `parts/2/audio_cloudflare`
 	- `parts/3/audio_cloudflare`
 
-### One-click action
+### Folder-first action
 
-Use `One-Click Pipeline` to run this sequence automatically:
+Use `Create Folder First` to run this sequence:
 
 1. Generate new set ID
 2. Build folder URL
 3. Save folder metadata to Firebase
-4. Validate `part_1.mp3`, `part_2.mp3`, `part_3.mp3`
-5. Persist validated `audio_cloudflare` URLs to Firebase
+
+Then do manual upload in Cloudflare console:
+
+4. Upload `part_1.mp3`, `part_2.mp3`, `part_3.mp3`
+5. Click `Validate part_1 / part_2 / part_3`
+6. App persists validated `audio_cloudflare` URLs to Firebase
 
 Optional:
 

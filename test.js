@@ -53,9 +53,17 @@ function resolvePartAudioUrl(partKey, part, draft) {
   const expectedSuffix = expectedPartSuffix(partKey);
   const cloudflareUrl = String(part.audio_cloudflare || "").trim();
   const firebaseUrl = String(part.audio_firebase || "").trim();
+  const folderUrl = String(draft.cloudflare_folder || "").trim();
 
   if (cloudflareUrl && cloudflareUrl.includes(expectedSuffix)) {
     return cloudflareUrl;
+  }
+
+  if (folderUrl) {
+    const folderDerived = buildFolderDerivedPartUrl(folderUrl, partKey);
+    if (folderDerived) {
+      return folderDerived;
+    }
   }
 
   if (cloudflareUrl) {
@@ -130,6 +138,12 @@ function renderDraft(data) {
 
   if (!keys.length) {
     refs.partsView.innerHTML = "<p class=\"muted\">No parts available yet.</p>";
+    return;
+  }
+
+  const missingAudioParts = keys.filter((key) => !resolvePartAudioUrl(key, parts[key] || {}, data));
+  if (missingAudioParts.length) {
+    refs.partsView.innerHTML = `<p class=\"muted\">Audio is not ready for part(s): ${missingAudioParts.join(", ")}. Ensure the URLs were saved to Firebase and the audio files exist in Cloudflare.</p>` + keys.map((key) => renderPart(key, parts[key] || {}, data)).join("");
     return;
   }
 

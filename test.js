@@ -33,8 +33,49 @@ async function rtdbGet(path) {
   return response.json();
 }
 
-function renderPart(partKey, part) {
-  const audioUrl = part.audio_cloudflare || part.audio_firebase || "";
+function normalizeUrl(url) {
+  return String(url || "").trim().replace(/\/+$/, "");
+}
+
+function expectedPartSuffix(partKey) {
+  return `/part_${partKey}.mp3`;
+}
+
+function buildFolderDerivedPartUrl(folderUrl, partKey) {
+  const cleanFolder = normalizeUrl(folderUrl);
+  if (!cleanFolder) {
+    return "";
+  }
+  return `${cleanFolder}${expectedPartSuffix(partKey)}`;
+}
+
+function resolvePartAudioUrl(partKey, part, draft) {
+  const expectedSuffix = expectedPartSuffix(partKey);
+  const cloudflareUrl = String(part.audio_cloudflare || "").trim();
+  const firebaseUrl = String(part.audio_firebase || "").trim();
+  const folderUrl = String(draft.cloudflare_folder || "").trim();
+
+  if (cloudflareUrl && cloudflareUrl.includes(expectedSuffix)) {
+    return cloudflareUrl;
+  }
+
+  if (folderUrl) {
+    return buildFolderDerivedPartUrl(folderUrl, partKey);
+  }
+
+  if (cloudflareUrl) {
+    return cloudflareUrl;
+  }
+
+  if (firebaseUrl) {
+    return firebaseUrl;
+  }
+
+  return "";
+}
+
+function renderPart(partKey, part, draft) {
+  const audioUrl = resolvePartAudioUrl(partKey, part, draft);
 
   return `
     <article class="viewer-part">
@@ -97,7 +138,7 @@ function renderDraft(data) {
     return;
   }
 
-  refs.partsView.innerHTML = keys.map((key) => renderPart(key, parts[key] || {})).join("");
+  refs.partsView.innerHTML = keys.map((key) => renderPart(key, parts[key] || {}, data)).join("");
 }
 
 function setNestedValue(obj, path, value) {

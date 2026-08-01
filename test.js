@@ -53,14 +53,9 @@ function resolvePartAudioUrl(partKey, part, draft) {
   const expectedSuffix = expectedPartSuffix(partKey);
   const cloudflareUrl = String(part.audio_cloudflare || "").trim();
   const firebaseUrl = String(part.audio_firebase || "").trim();
-  const folderUrl = String(draft.cloudflare_folder || "").trim();
 
   if (cloudflareUrl && cloudflareUrl.includes(expectedSuffix)) {
     return cloudflareUrl;
-  }
-
-  if (folderUrl) {
-    return buildFolderDerivedPartUrl(folderUrl, partKey);
   }
 
   if (cloudflareUrl) {
@@ -80,7 +75,7 @@ function renderPart(partKey, part, draft) {
   return `
     <article class="viewer-part">
       <h3>Part ${partKey}</h3>
-      ${audioUrl ? `<audio class="audio" controls src="${audioUrl}"></audio>` : "<p class=\"muted\">No audio URL.</p>"}
+      ${audioUrl ? `<audio class="audio" controls src="${audioUrl}"></audio>` : "<p class=\"muted\">No audio URL yet. Upload and validate this part first.</p>"}
 
       <div class="viewer-section">
         <h4>Questions</h4>

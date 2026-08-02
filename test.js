@@ -1,5 +1,6 @@
 const APP_CONFIG = window.APP_CONFIG || {};
 const RTDB_BASE = APP_CONFIG.rtdbBaseUrl || "https://quickcheck-25590-default-rtdb.asia-southeast1.firebasedatabase.app";
+const API_GATEWAY_BASE = (APP_CONFIG.apiGatewayBase || "").trim().replace(/\/+$/, "");
 const DRAFTS_PATH = "/toefl_itp/drafts_v2";
 const DATE_INDEX_PATH = "/toefl_itp/index_by_date/listening";
 
@@ -41,6 +42,10 @@ function expectedPartSuffix(partKey) {
   return `/part_${partKey}.mp3`;
 }
 
+function isPlayablePartKey(partKey) {
+  return /^[123]$/.test(String(partKey || ""));
+}
+
 function buildFolderDerivedPartUrl(folderUrl, partKey) {
   const cleanFolder = normalizeUrl(folderUrl);
   if (!cleanFolder) {
@@ -49,11 +54,30 @@ function buildFolderDerivedPartUrl(folderUrl, partKey) {
   return `${cleanFolder}${expectedPartSuffix(partKey)}`;
 }
 
+function buildProxyAudioUrl(objectKey) {
+  if (!API_GATEWAY_BASE || !objectKey) {
+    return "";
+  }
+
+  return `${API_GATEWAY_BASE}/api/developer/audio-proxy?objectKey=${encodeURIComponent(objectKey)}`;
+}
+
 function resolvePartAudioUrl(partKey, part, draft) {
+  if (!isPlayablePartKey(partKey)) {
+    return "";
+  }
+
   const expectedSuffix = expectedPartSuffix(partKey);
   const cloudflareUrl = String(part.audio_cloudflare || "").trim();
   const firebaseUrl = String(part.audio_firebase || "").trim();
   const folderUrl = String(draft.cloudflare_folder || "").trim();
+  const setId = String(draft.setId || draft.id || "").trim();
+  const objectKey = setId ? `audio/listening/sets/${setId}${expectedSuffix}` : "";
+
+  const proxyUrl = buildProxyAudioUrl(objectKey);
+  if (proxyUrl) {
+    return proxyUrl;
+  }
 
   if (cloudflareUrl && cloudflareUrl.includes(expectedSuffix)) {
     return cloudflareUrl;
@@ -141,7 +165,7 @@ function renderDraft(data) {
     return;
   }
 
-  const missingAudioParts = keys.filter((key) => !resolvePartAudioUrl(key, parts[key] || {}, data));
+  const missingAudioParts = keys.filter((key) => isPlayablePartKey(key) && !resolvePartAudioUrl(key, parts[key] || {}, data));
   if (missingAudioParts.length) {
     refs.partsView.innerHTML = `<p class=\"muted\">Audio is not ready for part(s): ${missingAudioParts.join(", ")}. Ensure the URLs were saved to Firebase and the audio files exist in Cloudflare.</p>` + keys.map((key) => renderPart(key, parts[key] || {}, data)).join("");
     return;

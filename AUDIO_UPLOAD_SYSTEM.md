@@ -18,7 +18,7 @@ Where `setId` is generated from set date and metadata (example: `mocktest_listen
 
 - `index.html`: launcher page
 - `developer.html` + `developer.js`: developer console for creating set metadata and uploading/validating audio
-- `test.html` + `test.js`: test page for loading a set by `setId` or date index and playing audio
+- `section 1.html` + `section 1_answered.html` + `developer.js`: test page for loading a set by `setId` or date index and playing audio
 - `app-config.js`: public runtime config
 
 ### Frontend responsibilities
@@ -164,8 +164,11 @@ Note:
 ## 4.4 Helper endpoints
 
 - `GET /api/developer/audio-url?objectKey=...`
+- `GET /api/developer/audio-proxy?objectKey=...`
 - `GET /api/developer/audio-exists?objectKey=...`
 - `GET /api/developer/audio-folder-contents?setId=...`
+
+`audio-proxy` is the recommended playback route when you want to avoid depending on the public `r2.dev` hostname.
 
 ## 5) End-to-end upload flow (developer page)
 
@@ -181,6 +184,7 @@ Note:
    - PUT MP3 bytes to returned signed URL
    - Save returned `objectUrl` to Firebase at `parts/{n}/audio_cloudflare`
 7. Test page resolves set by `setId` or date and uses part URLs for playback.
+8. When API playback is enabled, the test page loads MP3s from `/api/developer/audio-proxy` instead of the public R2 URL.
 
 ## 6) Sequence diagram
 
@@ -211,7 +215,8 @@ sequenceDiagram
 
   Test->>DB: resolve setId from date or query
   Test->>DB: fetch draft by setId
-  Test->>R2: load audio_cloudflare URLs
+  Test->>API: GET /audio-proxy?objectKey=...
+  API->>R2: stream audio bytes
 ```
 
 ## 7) Firebase data shape (simplified)

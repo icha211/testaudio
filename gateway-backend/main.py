@@ -6,9 +6,9 @@ from typing import List, Optional
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "").strip()
@@ -86,6 +86,11 @@ class AudioExistsResponse(BaseModel):
 class AudioUrlResponse(BaseModel):
     objectKey: str
     objectUrl: str
+
+
+class AudioProxyResponse(BaseModel):
+    objectKey: str
+    proxyUrl: str
 
 
 class AudioFolderContentsResponse(BaseModel):
@@ -199,6 +204,62 @@ async def upload_proxy(
 def audio_url(objectKey: str = Query(..., min_length=1)):
     object_key = objectKey.strip()
     return AudioUrlResponse(objectKey=object_key, objectUrl=f"{PUBLIC_BASE_URL}/{object_key}")
+
+
+@app.get("/api/developer/audio-proxy")
+def audio_proxy(
+    request: Request,
+    objectKey: str = Query(..., min_length=1),
+    range_header: Optional[str] = Header(default=None, alias="Range"),
+):
+    object_key = objectKey.strip()
+    if not OBJECT_KEY_RE.match(object_key):
+        raise HTTPException(
+            status_code=422,
+            detail="objectKey must be audio/listening/sets/{setId}/part_1.mp3, part_2.mp3, or part_3.mp3",
+        )
+
+    range_value = (range_header or "").strip()
+    if range_value and not re.fullmatch(r"bytes=\d*-\d*", range_value):
+        raise HTTPException(status_code=416, detail="Invalid Range header")
+
+    try:
+        response = S3.get_object(
+            Bucket=BUCKET_NAME,
+            Key=object_key,
+            **({"Range": range_value} if range_value else {}),
+        )
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        if error_code in {"NoSuchKey", "404", "NotFound"}:
+            raise HTTPException(status_code=404, detail="Audio not found") from exc
+        if error_code == "InvalidRange":
+            raise HTTPException(status_code=416, detail="Requested Range Not Satisfiable") from exc
+        raise HTTPException(status_code=500, detail=f"Failed to stream audio: {exc}") from exc
+
+    body = response["Body"]
+    headers = {
+        "Accept-Ranges": response.get("AcceptRanges", "bytes"),
+        "Content-Type": response.get("ContentType", "audio/mpeg"),
+    }
+
+    content_length = response.get("ContentLength")
+    if content_length is not None:
+        headers["Content-Length"] = str(content_length)
+
+    content_range = response.get("ContentRange")
+    if content_range:
+        headers["Content-Range"] = content_range
+
+    etag = response.get("ETag")
+    if etag:
+        headers["ETag"] = etag
+
+    last_modified = response.get("LastModified")
+    if last_modified:
+        headers["Last-Modified"] = last_modified.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+    return StreamingResponse(body, status_code=206 if range_value else 200, headers=headers)
 
 
 @app.get("/api/developer/audio-exists", response_model=AudioExistsResponse)

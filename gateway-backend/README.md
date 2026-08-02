@@ -25,6 +25,7 @@ uvicorn main:app --reload --port 8080
 - `POST /api/developer/upload-url`
 - `POST /api/developer/upload-proxy`
 - `GET /api/developer/audio-url`
+- `GET /api/developer/audio-proxy`
 - `GET /api/developer/audio-exists`
 - `GET /api/developer/audio-folder-contents`
 
@@ -33,4 +34,5 @@ uvicorn main:app --reload --port 8080
 - `ensure-audio-folder` creates `audio/listening/sets/{setId}/.folder`
 - `upload-url` must honor the exact `objectKey` provided by the frontend
 - `upload-proxy` must also honor the exact `objectKey` provided by the frontend
+- `audio-proxy` streams audio through the API so playback can avoid the public R2 hostname
 - No timestamp-based object keys should be generated for listening part uploads

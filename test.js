@@ -62,7 +62,7 @@ function buildProxyAudioUrl(objectKey) {
   return `${API_GATEWAY_BASE}/api/developer/audio-proxy?objectKey=${encodeURIComponent(objectKey)}`;
 }
 
-function resolvePartAudioUrl(partKey, part, draft) {
+function resolveDirectPartAudioUrl(partKey, part, draft) {
   if (!isPlayablePartKey(partKey)) {
     return "";
   }
@@ -71,14 +71,6 @@ function resolvePartAudioUrl(partKey, part, draft) {
   const cloudflareUrl = String(part.audio_cloudflare || "").trim();
   const firebaseUrl = String(part.audio_firebase || "").trim();
   const folderUrl = String(draft.cloudflare_folder || "").trim();
-  const setId = String(draft.setId || draft.id || "").trim();
-  const objectKey = setId ? `audio/listening/sets/${setId}${expectedSuffix}` : "";
-
-  const proxyUrl = buildProxyAudioUrl(objectKey);
-  if (proxyUrl) {
-    return proxyUrl;
-  }
-
   if (cloudflareUrl && cloudflareUrl.includes(expectedSuffix)) {
     return cloudflareUrl;
   }
@@ -101,13 +93,115 @@ function resolvePartAudioUrl(partKey, part, draft) {
   return "";
 }
 
+function resolvePartAudioSources(partKey, part, draft) {
+  const directUrl = resolveDirectPartAudioUrl(partKey, part, draft);
+  const setId = String(draft.setId || draft.id || "").trim();
+  const objectKey = isPlayablePartKey(partKey) && setId ? `audio/listening/sets/${setId}${expectedPartSuffix(partKey)}` : "";
+  const proxyUrl = buildProxyAudioUrl(objectKey);
+
+  if (proxyUrl && directUrl) {
+    return {
+      primaryUrl: proxyUrl,
+      fallbackUrl: directUrl,
+      objectKey,
+      setId
+    };
+  }
+
+  return {
+    primaryUrl: directUrl || proxyUrl,
+    fallbackUrl: "",
+    objectKey,
+    setId
+  };
+}
+
+async function reportAudioPlaybackEvent(payload) {
+  if (!API_GATEWAY_BASE) {
+    return;
+  }
+
+  try {
+    await fetch(`${API_GATEWAY_BASE}/api/developer/audio-playback-event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (_) {
+    // Best-effort telemetry only.
+  }
+}
+
+function attachAudioHandlers() {
+  const audios = refs.partsView.querySelectorAll("audio[data-primary-url]");
+
+  for (const audio of audios) {
+    if (audio.dataset.bound === "1") {
+      continue;
+    }
+
+    audio.dataset.bound = "1";
+
+    audio.addEventListener("loadeddata", () => {
+      reportAudioPlaybackEvent({
+        event: "loadeddata",
+        setId: audio.dataset.setId || "",
+        partKey: audio.dataset.partKey || "",
+        source: audio.dataset.activeSource || "primary",
+        currentSrc: audio.currentSrc || audio.src || "",
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    audio.addEventListener("error", async () => {
+      const canFallback = audio.dataset.fallbackUrl && audio.dataset.triedFallback !== "1";
+
+      if (canFallback) {
+        audio.dataset.triedFallback = "1";
+        audio.dataset.activeSource = "fallback";
+        audio.src = audio.dataset.fallbackUrl;
+        audio.load();
+
+        await reportAudioPlaybackEvent({
+          event: "fallback_activated",
+          setId: audio.dataset.setId || "",
+          partKey: audio.dataset.partKey || "",
+          failedPrimaryUrl: audio.dataset.primaryUrl || "",
+          fallbackUrl: audio.dataset.fallbackUrl || "",
+          objectKey: audio.dataset.objectKey || "",
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString()
+        });
+
+        return;
+      }
+
+      await reportAudioPlaybackEvent({
+        event: "audio_error",
+        setId: audio.dataset.setId || "",
+        partKey: audio.dataset.partKey || "",
+        source: audio.dataset.activeSource || "primary",
+        objectKey: audio.dataset.objectKey || "",
+        attemptedUrl: audio.currentSrc || audio.src || "",
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString()
+      });
+    });
+  }
+}
+
 function renderPart(partKey, part, draft) {
-  const audioUrl = resolvePartAudioUrl(partKey, part, draft);
+  const source = resolvePartAudioSources(partKey, part, draft);
+  const { primaryUrl: audioUrl, fallbackUrl, objectKey, setId } = source;
+  const safeFallbackAttr = fallbackUrl ? ` data-fallback-url="${escapeHtml(fallbackUrl)}"` : "";
+  const safeObjectKeyAttr = objectKey ? ` data-object-key="${escapeHtml(objectKey)}"` : "";
+  const safeSetIdAttr = setId ? ` data-set-id="${escapeHtml(setId)}"` : "";
 
   return `
     <article class="viewer-part">
       <h3>Part ${partKey}</h3>
-      ${audioUrl ? `<audio class="audio" controls src="${audioUrl}"></audio>` : "<p class=\"muted\">No audio URL yet. Upload and validate this part first.</p>"}
+      ${audioUrl ? `<audio class="audio" controls src="${escapeHtml(audioUrl)}" data-primary-url="${escapeHtml(audioUrl)}"${safeFallbackAttr}${safeObjectKeyAttr}${safeSetIdAttr} data-part-key="${escapeHtml(String(partKey))}" data-active-source="primary"></audio>` : "<p class=\"muted\">No audio URL yet. Upload and validate this part first.</p>"}
 
       <div class="viewer-section">
         <h4>Questions</h4>
@@ -165,13 +259,22 @@ function renderDraft(data) {
     return;
   }
 
-  const missingAudioParts = keys.filter((key) => isPlayablePartKey(key) && !resolvePartAudioUrl(key, parts[key] || {}, data));
+  const missingAudioParts = keys.filter((key) => {
+    if (!isPlayablePartKey(key)) {
+      return false;
+    }
+
+    const source = resolvePartAudioSources(key, parts[key] || {}, data);
+    return !source.primaryUrl;
+  });
   if (missingAudioParts.length) {
     refs.partsView.innerHTML = `<p class=\"muted\">Audio is not ready for part(s): ${missingAudioParts.join(", ")}. Ensure the URLs were saved to Firebase and the audio files exist in Cloudflare.</p>` + keys.map((key) => renderPart(key, parts[key] || {}, data)).join("");
+    attachAudioHandlers();
     return;
   }
 
   refs.partsView.innerHTML = keys.map((key) => renderPart(key, parts[key] || {}, data)).join("");
+  attachAudioHandlers();
 }
 
 function setNestedValue(obj, path, value) {

@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -10,6 +11,8 @@ from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+
+LOGGER = logging.getLogger("audio_playback")
 
 ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "").strip()
 BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "").strip()
@@ -104,6 +107,20 @@ class UploadProxyResponse(BaseModel):
     objectUrl: str
     contentType: str
     size: int
+
+
+class AudioPlaybackEventRequest(BaseModel):
+    event: str = Field(min_length=1)
+    setId: str = ""
+    partKey: str = ""
+    source: str = ""
+    objectKey: str = ""
+    attemptedUrl: str = ""
+    failedPrimaryUrl: str = ""
+    fallbackUrl: str = ""
+    currentSrc: str = ""
+    userAgent: str = ""
+    timestamp: str = ""
 
 
 @app.get("/health")
@@ -247,16 +264,13 @@ def audio_proxy(
     if content_length is not None:
         headers["Content-Length"] = str(content_length)
 
-    content_range = response.get("ContentRange")
-    if content_range:
+    if content_range := response.get("ContentRange"):
         headers["Content-Range"] = content_range
 
-    etag = response.get("ETag")
-    if etag:
+    if etag := response.get("ETag"):
         headers["ETag"] = etag
 
-    last_modified = response.get("LastModified")
-    if last_modified:
+    if last_modified := response.get("LastModified"):
         headers["Last-Modified"] = last_modified.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
     return StreamingResponse(body, status_code=206 if range_value else 200, headers=headers)
@@ -273,6 +287,21 @@ def audio_exists(objectKey: str = Query(..., min_length=1)):
         if error_code in {"404", "NoSuchKey", "NotFound"}:
             return AudioExistsResponse(objectKey=object_key, exists=False)
         raise HTTPException(status_code=500, detail=f"Head object failed: {exc}") from exc
+
+
+@app.post("/api/developer/audio-playback-event")
+def audio_playback_event(payload: AudioPlaybackEventRequest):
+    LOGGER.info(
+        "audio_event event=%s setId=%s partKey=%s source=%s objectKey=%s attemptedUrl=%s fallbackUrl=%s",
+        payload.event,
+        payload.setId,
+        payload.partKey,
+        payload.source,
+        payload.objectKey,
+        payload.attemptedUrl or payload.currentSrc or payload.failedPrimaryUrl,
+        payload.fallbackUrl,
+    )
+    return {"ok": True}
 
 
 @app.get("/api/developer/audio-folder-contents", response_model=AudioFolderContentsResponse)

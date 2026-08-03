@@ -81,6 +81,10 @@ function expectedPartUrl(partKey, folderUrl = getCloudflareFolder()) {
   return `${folderUrl}/part_${partKey}.mp3`;
 }
 
+function expectedObjectKey(setId, partKey) {
+  return `audio/listening/sets/${setId}/part_${partKey}.mp3`;
+}
+
 function getPartStatusEl(partKey) {
   const card = getPartCard(partKey);
   return card?.querySelector("[data-role=partStatus]");
@@ -493,7 +497,7 @@ async function uploadPartViaPipeline(partKey) {
 
   await saveFolderRecordToFirebase();
 
-  const objectKey = `audio/listening/sets/${setId}/part_${partKey}.mp3`;
+  const objectKey = expectedObjectKey(setId, partKey);
   setPartStatus(partKey, "Requesting signed upload URL for exact folder path...", "ok");
 
   const signedResponse = await fetch(uploadUrlEndpoint, {
@@ -512,7 +516,16 @@ async function uploadPartViaPipeline(partKey) {
 
   const result = await signedResponse.json();
   const uploadUrl = result.uploadUrl || "";
-  const publicUrl = result.objectUrl || result.audio_cloudflare || result.publicUrl || result.url || "";
+  const returnedObjectKey = String(result.objectKey || "").trim();
+
+  if (returnedObjectKey && returnedObjectKey !== objectKey) {
+    throw new Error(`Upload endpoint returned wrong objectKey: ${returnedObjectKey}. Expected: ${objectKey}`);
+  }
+
+  if (!uploadUrl.includes(`part_${partKey}.mp3`)) {
+    throw new Error("Upload URL does not target the selected part file name. Please use /api/developer/upload-url from this gateway.");
+  }
+
   if (!uploadUrl) {
     throw new Error("Signed URL response did not include uploadUrl.");
   }
@@ -531,14 +544,14 @@ async function uploadPartViaPipeline(partKey) {
     throw new Error(`R2 upload failed (${putResponse.status})`);
   }
 
-  const finalPublicUrl = publicUrl || result.objectUrl || `https://${PUBLIC_R2_DEV_BASE.replace(/^https?:\/\//, "")}/${objectKey}`;
+  const finalPublicUrl = `${PUBLIC_R2_DEV_BASE.replace(/\/+$/, "")}/${objectKey}`;
   if (!finalPublicUrl) {
     throw new Error("Upload succeeded but no public URL was returned.");
   }
 
   setPartAudioUrl(partKey, finalPublicUrl);
   await saveSinglePartAudioUrlToFirebase(partKey, finalPublicUrl);
-  setPartStatus(partKey, "Upload completed into the folder path and URL mapped to this part.", "ok");
+  setPartStatus(partKey, `Upload completed. ${file.name} was stored as part_${partKey}.mp3 and URL mapped to this part.`, "ok");
 }
 
 function getSelectedAudioFileCount() {

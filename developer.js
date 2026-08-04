@@ -69,6 +69,27 @@ function normalizeUploadEndpoint(url) {
   return clean;
 }
 
+function resolveUploadEndpointOrThrow() {
+  const configured = normalizeUploadEndpoint(refs.uploadEndpoint.value.trim());
+  const fallback = normalizeUploadEndpoint(UPLOAD_URL_ENDPOINT);
+  const candidate = configured || fallback;
+
+  if (!candidate) {
+    throw new Error("Upload URL endpoint not configured. Expected: /api/developer/upload-url");
+  }
+
+  if (!candidate.includes("/api/developer/upload-url")) {
+    throw new Error("Upload endpoint must be /api/developer/upload-url from this gateway.");
+  }
+
+  if (configured !== candidate) {
+    refs.uploadEndpoint.value = candidate;
+    localStorage.setItem("toefl_listening_upload_endpoint", candidate);
+  }
+
+  return candidate;
+}
+
 function buildDefaultCloudflareFolder(setId) {
   return `${PUBLIC_R2_DEV_BASE}/audio/listening/sets/${setId}`;
 }
@@ -480,15 +501,10 @@ function requireSetIdAndFolder() {
 
 async function uploadPartViaPipeline(partKey) {
   const setId = requireSetIdAndFolder();
-  const uploadUrlEndpoint = refs.uploadEndpoint.value.trim() || UPLOAD_URL_ENDPOINT;
+  const uploadUrlEndpoint = resolveUploadEndpointOrThrow();
   const card = getPartCard(partKey);
   const fileInput = card?.querySelector(`[data-file-part=\"${partKey}\"]`);
   const file = fileInput?.files?.[0];
-
-  if (!uploadUrlEndpoint) {
-    setPartStatus(partKey, "Upload URL endpoint not configured. The gateway must support signed uploads.", "warn");
-    return;
-  }
 
   if (!file) {
     setPartStatus(partKey, "Choose an audio file first.", "warn");

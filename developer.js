@@ -1,4 +1,5 @@
 const APP_CONFIG = window.APP_CONFIG || {};
+const DEV_BUILD_ID = "20260804d";
 const RTDB_BASE = APP_CONFIG.rtdbBaseUrl || "https://quickcheck-25590-default-rtdb.asia-southeast1.firebasedatabase.app";
 const DRAFTS_PATH = "/toefl_itp/drafts_v2";
 const DATE_INDEX_PATH = "/toefl_itp/index_by_date/listening";
@@ -29,6 +30,8 @@ const refs = {
   partsContainer: document.getElementById("partsContainer"),
   openTestLink: document.getElementById("openTestLink")
 };
+
+console.info(`[developer.js] build=${DEV_BUILD_ID}`);
 
 function todayString() {
   return new Date().toISOString().slice(0, 10);

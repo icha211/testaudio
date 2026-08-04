@@ -515,35 +515,60 @@ async function uploadPartViaPipeline(partKey) {
 
   const objectKey = expectedObjectKey(setId, partKey);
   setPartStatus(partKey, "Requesting signed upload URL for exact folder path...", "ok");
-
-  const signedResponse = await fetch(uploadUrlEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      objectKey,
-      fileName: objectKey,
-      fileType: file.type || "audio/mpeg"
-    })
-  });
-
-  if (!signedResponse.ok) {
-    throw new Error(`Signed URL request failed (${signedResponse.status})`);
+  const candidateEndpoints = [uploadUrlEndpoint];
+  const canonicalUploadEndpoint = normalizeUploadEndpoint(UPLOAD_URL_ENDPOINT);
+  if (canonicalUploadEndpoint && !candidateEndpoints.includes(canonicalUploadEndpoint)) {
+    candidateEndpoints.push(canonicalUploadEndpoint);
   }
 
-  const result = await signedResponse.json();
-  const uploadUrl = result.uploadUrl || "";
-  const returnedObjectKey = String(result.objectKey || "").trim();
+  let uploadUrl = "";
+  let signedEndpointUsed = "";
+  let mismatchDetail = "";
 
-  if (returnedObjectKey && returnedObjectKey !== objectKey) {
-    throw new Error(`Upload endpoint returned wrong objectKey: ${returnedObjectKey}. Expected: ${objectKey}`);
-  }
+  for (let i = 0; i < candidateEndpoints.length; i += 1) {
+    const endpoint = candidateEndpoints[i];
+    // eslint-disable-next-line no-await-in-loop
+    const signedResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        objectKey,
+        fileName: objectKey,
+        fileType: file.type || "audio/mpeg"
+      })
+    });
 
-  if (!uploadUrl.includes(`part_${partKey}.mp3`)) {
-    throw new Error("Upload URL does not target the selected part file name. Please use /api/developer/upload-url from this gateway.");
+    if (!signedResponse.ok) {
+      mismatchDetail = `Signed URL request failed (${signedResponse.status}) at ${endpoint}`;
+      continue;
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    const result = await signedResponse.json();
+    const candidateUploadUrl = String(result.uploadUrl || "").trim();
+    const returnedObjectKey = String(result.objectKey || "").trim();
+    const objectKeyMatches = !returnedObjectKey || returnedObjectKey === objectKey;
+    const pathMatches = candidateUploadUrl.includes(`part_${partKey}.mp3`);
+
+    if (candidateUploadUrl && objectKeyMatches && pathMatches) {
+      uploadUrl = candidateUploadUrl;
+      signedEndpointUsed = endpoint;
+      break;
+    }
+
+    mismatchDetail = returnedObjectKey && returnedObjectKey !== objectKey
+      ? `Upload endpoint returned wrong objectKey: ${returnedObjectKey}. Expected: ${objectKey}`
+      : "Upload URL did not target the selected part file name.";
   }
 
   if (!uploadUrl) {
-    throw new Error("Signed URL response did not include uploadUrl.");
+    throw new Error(`${mismatchDetail} Please use /api/developer/upload-url from this gateway.`);
+  }
+
+  if (signedEndpointUsed && signedEndpointUsed !== uploadUrlEndpoint) {
+    refs.uploadEndpoint.value = signedEndpointUsed;
+    localStorage.setItem("toefl_listening_upload_endpoint", signedEndpointUsed);
+    setPartStatus(partKey, "Configured endpoint rewrote object key. Auto-switched to canonical gateway upload endpoint.", "warn");
   }
 
   setPartStatus(partKey, "Uploading MP3 into the folder path...", "ok");

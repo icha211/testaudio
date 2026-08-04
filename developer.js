@@ -518,6 +518,36 @@ async function uploadPartViaPipeline(partKey) {
   await saveFolderRecordToFirebase();
 
   const objectKey = expectedObjectKey(setId, partKey);
+  const finalPublicUrl = `${PUBLIC_R2_DEV_BASE.replace(/\/+$/, "")}/${objectKey}`;
+
+  if (UPLOAD_PROXY_ENDPOINT) {
+    setPartStatus(partKey, "Uploading via gateway upload-proxy for exact folder path...", "ok");
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("objectKey", objectKey);
+    formData.append("fileType", file.type || "audio/mpeg");
+
+    const proxyResponse = await fetch(UPLOAD_PROXY_ENDPOINT, {
+      method: "POST",
+      body: formData
+    });
+
+    if (proxyResponse.ok) {
+      const proxyResult = await proxyResponse.json();
+      const proxyObjectKey = String(proxyResult.objectKey || "").trim();
+      if (proxyObjectKey && proxyObjectKey !== objectKey) {
+        throw new Error(`upload-proxy returned wrong objectKey: ${proxyObjectKey}. Expected: ${objectKey}`);
+      }
+
+      setPartAudioUrl(partKey, finalPublicUrl);
+      await saveSinglePartAudioUrlToFirebase(partKey, finalPublicUrl);
+      setPartStatus(partKey, `Upload completed via upload-proxy. ${file.name} was stored as part_${partKey}.mp3 and URL mapped to this part.`, "ok");
+      return;
+    }
+
+    setPartStatus(partKey, `upload-proxy failed (${proxyResponse.status}). Falling back to signed URL flow...`, "warn");
+  }
+
   setPartStatus(partKey, "Requesting signed upload URL for exact folder path...", "ok");
   const candidateEndpoints = [uploadUrlEndpoint];
   const canonicalUploadEndpoint = normalizeUploadEndpoint(UPLOAD_URL_ENDPOINT);
@@ -591,7 +621,6 @@ async function uploadPartViaPipeline(partKey) {
       throw new Error(`upload-proxy returned wrong objectKey: ${proxyObjectKey}. Expected: ${objectKey}`);
     }
 
-    const finalPublicUrl = `${PUBLIC_R2_DEV_BASE.replace(/\/+$/, "")}/${objectKey}`;
     setPartAudioUrl(partKey, finalPublicUrl);
     await saveSinglePartAudioUrlToFirebase(partKey, finalPublicUrl);
     setPartStatus(partKey, `Upload completed via upload-proxy. ${file.name} was stored as part_${partKey}.mp3 and URL mapped to this part.`, "ok");
@@ -618,7 +647,6 @@ async function uploadPartViaPipeline(partKey) {
     throw new Error(`R2 upload failed (${putResponse.status})`);
   }
 
-  const finalPublicUrl = `${PUBLIC_R2_DEV_BASE.replace(/\/+$/, "")}/${objectKey}`;
   if (!finalPublicUrl) {
     throw new Error("Upload succeeded but no public URL was returned.");
   }

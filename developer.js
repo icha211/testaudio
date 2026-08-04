@@ -7,6 +7,7 @@ const API_GATEWAY_BASE = (APP_CONFIG.apiGatewayBase || "").trim().replace(/\/+$/
 const DEFAULT_UPLOAD_ENDPOINT = APP_CONFIG.uploadEndpoint || (API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-url` : "");
 const ENSURE_FOLDER_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/ensure-audio-folder` : "";
 const UPLOAD_URL_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-url` : "";
+const UPLOAD_PROXY_ENDPOINT = API_GATEWAY_BASE ? `${API_GATEWAY_BASE}/api/developer/upload-proxy` : "";
 const PART_KEYS = ["1", "2", "3"];
 
 const audioUrlsByPart = {
@@ -562,7 +563,36 @@ async function uploadPartViaPipeline(partKey) {
   }
 
   if (!uploadUrl) {
-    throw new Error(`${mismatchDetail} Please use /api/developer/upload-url from this gateway.`);
+    if (!UPLOAD_PROXY_ENDPOINT) {
+      throw new Error(`${mismatchDetail} Please use /api/developer/upload-url from this gateway.`);
+    }
+
+    setPartStatus(partKey, "Signed endpoint rewrote object key. Falling back to gateway upload-proxy...", "warn");
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("objectKey", objectKey);
+    formData.append("fileType", file.type || "audio/mpeg");
+
+    const proxyResponse = await fetch(UPLOAD_PROXY_ENDPOINT, {
+      method: "POST",
+      body: formData
+    });
+
+    if (!proxyResponse.ok) {
+      throw new Error(`${mismatchDetail} upload-proxy failed (${proxyResponse.status}).`);
+    }
+
+    const proxyResult = await proxyResponse.json();
+    const proxyObjectKey = String(proxyResult.objectKey || "").trim();
+    if (proxyObjectKey && proxyObjectKey !== objectKey) {
+      throw new Error(`upload-proxy returned wrong objectKey: ${proxyObjectKey}. Expected: ${objectKey}`);
+    }
+
+    const finalPublicUrl = `${PUBLIC_R2_DEV_BASE.replace(/\/+$/, "")}/${objectKey}`;
+    setPartAudioUrl(partKey, finalPublicUrl);
+    await saveSinglePartAudioUrlToFirebase(partKey, finalPublicUrl);
+    setPartStatus(partKey, `Upload completed via upload-proxy. ${file.name} was stored as part_${partKey}.mp3 and URL mapped to this part.`, "ok");
+    return;
   }
 
   if (signedEndpointUsed && signedEndpointUsed !== uploadUrlEndpoint) {
